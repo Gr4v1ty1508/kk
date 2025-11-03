@@ -6,7 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
 -- 2. ตั้งค่า
-local MAX_ROUNDS_TO_TELEPORT = 3 -- ❗ จำนวน "รอบ" (การกลับไป Wave 1) ที่ต้องการ
+local MAX_ROUNDS_TO_TELEPORT = 20 -- ❗ จำนวน "รอบ" (การกลับไป Wave 1) ที่ต้องการ
 local currentRoundCount = 0 -- ❗ ตัวนับ "รอบ" ของเราเอง
 print("Client: กำหนดจำนวน 'รอบ' (การรีเซ็ต Wave 1) คือ " .. MAX_ROUNDS_TO_TELEPORT)
 
