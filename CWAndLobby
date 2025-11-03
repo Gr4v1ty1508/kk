@@ -1,0 +1,150 @@
+-- นี่คือ LocalScript, ให้วางไว้ใน StarterPlayer > StarterPlayerScripts
+-- (สคริปต์รวม: UI + นับการรีเซ็ต Wave 1 + Teleport)
+
+-- 1. กำหนด Services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+-- 2. ตั้งค่า
+local MAX_ROUNDS_TO_TELEPORT = 3 -- ❗ จำนวน "รอบ" (การกลับไป Wave 1) ที่ต้องการ
+local currentRoundCount = 0 -- ❗ ตัวนับ "รอบ" ของเราเอง
+print("Client: กำหนดจำนวน 'รอบ' (การรีเซ็ต Wave 1) คือ " .. MAX_ROUNDS_TO_TELEPORT)
+
+-- 3. อ้างอิงถึง Values และ Remotes
+local waveValue = ReplicatedStorage:WaitForChild("Wave") -- IntValue
+local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
+local teleportBackRemote = remotesFolder:WaitForChild("TeleportBack") -- RemoteEvent
+
+-- 4. อ้างอิงถึงผู้เล่น
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- [!! เพิ่มเติม !!]
+-- ตัวแปรสำหรับเก็บค่า Wave ล่าสุด เพื่อป้องกันการนับซ้ำ
+local previousWaveValue = waveValue.Value
+
+-- ----------------------------------------------------
+-- [!! ส่วนที่สร้าง UI ด้วย Code ทั้งหมด !!]
+-- ----------------------------------------------------
+
+-- 4.1. สร้าง ScreenGui
+local roundGui = Instance.new("ScreenGui")
+roundGui.Name = "GameUI"
+roundGui.DisplayOrder = 10 
+roundGui.Parent = PlayerGui
+
+-- 4.2. สร้าง Frame พื้นหลัง (กรอบสีดำ)
+local backgroundFrame = Instance.new("Frame")
+backgroundFrame.Name = "RoundContainer"
+backgroundFrame.Size = UDim2.new(0, 150, 0, 100) 
+backgroundFrame.Position = UDim2.new(0, 20, 0, 20) 
+backgroundFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+backgroundFrame.BorderSizePixel = 0
+backgroundFrame.Parent = roundGui
+
+-- ทำให้ลากได้
+backgroundFrame.Active = true 
+backgroundFrame.Draggable = true 
+
+-- 4.3. ทำให้ Frame ขอบมน
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 8) 
+uiCorner.Parent = backgroundFrame
+
+-- 4.4. [!! แก้ไข !!] สร้าง TextLabel สำหรับคำว่า "ROUND"
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name = "Title"
+titleLabel.Size = UDim2.new(1, 0, 0, 20) 
+titleLabel.Position = UDim2.new(0, 0, 0, 5) 
+titleLabel.BackgroundTransparency = 1
+titleLabel.TextColor3 = Color3.fromRGB(150, 150, 150) 
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.Text = "ROUND" -- เปลี่ยนเป็น "ROUND" เพื่อความชัดเจน
+titleLabel.TextScaled = true
+titleLabel.TextXAlignment = Enum.TextXAlignment.Center
+titleLabel.Parent = backgroundFrame
+
+-- 4.5. สร้าง TextLabel สำหรับตัวเลข (ตัวเลข "รอบ" ที่เรานับ)
+local numberLabel = Instance.new("TextLabel")
+numberLabel.Name = "RoundDisplay"
+numberLabel.Size = UDim2.new(1, 0, 0, 60) 
+numberLabel.Position = UDim2.new(0, 0, 0, 25) 
+numberLabel.BackgroundTransparency = 1
+numberLabel.TextColor3 = Color3.fromRGB(240, 240, 240) 
+numberLabel.Font = Enum.Font.GothamBlack 
+numberLabel.TextScaled = true
+numberLabel.Text = "0"
+numberLabel.Parent = backgroundFrame
+
+-- 4.6. สร้าง TextLabel สำหรับบอก "รอบ" สูงสุดที่จะ Teleport
+local maxRoundLabel = Instance.new("TextLabel")
+maxRoundLabel.Name = "MaxRoundDisplay"
+maxRoundLabel.Size = UDim2.new(1, -10, 0, 15) 
+maxRoundLabel.Position = UDim2.new(0, 0, 1, -20) 
+maxRoundLabel.BackgroundTransparency = 1
+maxRoundLabel.TextColor3 = Color3.fromRGB(150, 150, 150) 
+maxRoundLabel.Font = Enum.Font.SourceSansBold
+maxRoundLabel.TextScaled = true
+maxRoundLabel.Text = "/ " .. MAX_ROUNDS_TO_TELEPORT
+maxRoundLabel.TextXAlignment = Enum.TextXAlignment.Right 
+maxRoundLabel.Parent = backgroundFrame
+
+-- 4.7. สร้างปุ่มปิด (TextButton "X")
+-- ... (เหมือนเดิม) ...
+local closeButton = Instance.new("TextButton")
+closeButton.Name = "CloseButton"; closeButton.Size = UDim2.new(0, 20, 0, 20); closeButton.Position = UDim2.new(1, -25, 0, 5)
+closeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50); closeButton.BorderSizePixel = 0; closeButton.TextColor3 = Color3.fromRGB(220, 220, 220)
+closeButton.Text = "X"; closeButton.Font = Enum.Font.SourceSansBold; closeButton.TextScaled = true; closeButton.Parent = backgroundFrame
+
+-- 4.8. ทำให้ปุ่มปิดขอบมน
+-- ... (เหมือนเดิม) ...
+local closeButtonCorner = Instance.new("UICorner"); closeButtonCorner.CornerRadius = UDim.new(0, 4); closeButtonCorner.Parent = closeButton
+
+-- 4.9. เขียนโค้ดให้ปุ่มปิดทำงาน
+closeButton.MouseButton1Click:Connect(function()
+	backgroundFrame.Visible = false 
+end)
+
+----------------------------------------------------
+
+print("Client: สคริปต์นับ 'รอบ' (Wave 1) พร้อมทำงาน")
+
+-- 5. ฟังก์ชันสำหรับอัปเดตตัวเลข "รอบ" บน UI
+local function updateRoundCountUI(count)
+	numberLabel.Text = tostring(count)
+end
+
+-- 6. [!! ลอจิกใหม่ !!] ฟังก์ชันที่จะทำงานเมื่อ 'Wave' (IntValue) เปลี่ยนค่า
+local function onWaveValueChanged(newValue)
+	
+	-- [!! เงื่อนไขสำคัญ !!]
+	-- ถ้าค่าใหม่เป็น 1 และค่าก่อนหน้านี้ไม่ใช่ 1
+	if newValue == 1 and previousWaveValue ~= 1 then
+		
+		-- นี่คือการเริ่ม Wave 1 "รอบใหม่"
+		currentRoundCount = currentRoundCount + 1
+		print("Client: ตรวจพบการเริ่ม Wave 1! (รอบที่ " .. currentRoundCount .. ")")
+		
+		-- อัปเดต UI ให้แสดง "รอบ" ปัจจุบัน
+		updateRoundCountUI(currentRoundCount)
+		
+		-- ตรวจสอบว่าถึงเป้าหมายหรือยัง
+		if currentRoundCount >= MAX_ROUNDS_TO_TELEPORT then
+			print("Client: ครบ " .. currentRoundCount .. " รอบแล้ว! ส่งสัญญาณกลับ Lobby!")
+			teleportBackRemote:FireServer()
+			
+			-- (ทางเลือก) รีเซ็ตตัวนับ ถ้าอยากให้เริ่มนับใหม่
+			-- currentRoundCount = 0
+			-- updateRoundCountUI(currentRoundCount)
+		end
+	end
+	
+	-- อัปเดตค่า "ก่อนหน้า" ให้เป็นค่าปัจจุบัน เพื่อรอการเปลี่ยนแปลงครั้งต่อไป
+	previousWaveValue = newValue
+end
+
+-- 7. เชื่อมต่อฟังก์ชันเข้ากับ .Changed
+waveValue.Changed:Connect(onWaveValueChanged)
+
+-- 8. อัปเดต UI ครั้งแรก (เป็น 0)
+updateRoundCountUI(currentRoundCount)
